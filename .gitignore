@@ -4,5 +4,7 @@ __pycache__/
 
 # env and vscode
 env
+venv
+.idea
 .vscode
 *.pickle

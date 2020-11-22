@@ -1,15 +1,16 @@
-import cv2
-import numpy as np
+import math
 import os
+import pickle
 import sys
 from collections import defaultdict
-from tqdm import tqdm
 from multiprocessing import Pool
-import math
-import pickle
-import variables as conf
 from time import sleep
 
+import cv2
+import numpy as np
+from tqdm import tqdm
+
+import variables as conf
 
 COLOR_DEPTH = conf.COLOR_DEPTH
 RESIZING_SCALES = conf.RESIZING_SCALES
@@ -21,7 +22,7 @@ OVERLAP_TILES = conf.OVERLAP_TILES
 def color_quantization(img, n_colors):
     return np.round(img / 255 * n_colors) / n_colors * 255
 
-
+    
 def read_image(path):
     img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
     if img.shape[2] == 3:
@@ -35,20 +36,20 @@ def resize_image(img, ratio):
     return img
 
 
-def mode_color(img, ingore_alpha=False):
+def mode_color(img, ignore_alpha=False):
     counter = defaultdict(int)
     total = 0
     for y in img:
         for x in y:
-            if len(x) < 4 or ingore_alpha or x[3] != 0:
+            if len(x) < 4 or ignore_alpha or x[3] != 0:
                 counter[tuple(x[:3])] += 1
             else:
-                counter[(-1,-1,-1)] += 1
+                counter[(-1, -1, -1)] += 1
             total += 1
 
     if total > 0:
         mode_color = max(counter, key=counter.get)
-        if mode_color == (-1,-1,-1):
+        if mode_color == (-1, -1, -1):
             return None, None
         else:
             return mode_color, counter[mode_color] / total
@@ -65,14 +66,12 @@ def show_image(img, wait=True):
 
 
 def load_tiles(paths):
-    print('Loading tiles')
     tiles = defaultdict(list)
-
     for path in paths:
         if os.path.isdir(path):
-            for tile_name in tqdm(os.listdir(path)):
+            for tile_name in tqdm(os.listdir(path), desc="Loading tiles"):
                 tile = read_image(os.path.join(path, tile_name))
-                mode, rel_freq = mode_color(tile, ingore_alpha=True)
+                mode, rel_freq = mode_color(tile, ignore_alpha=True)
                 if mode != None:
                     for scale in RESIZING_SCALES:
                         t = resize_image(tile, scale)
@@ -85,7 +84,7 @@ def load_tiles(paths):
 
             with open('tiles.pickle', 'wb') as f:
                 pickle.dump(tiles, f)
-        
+
         else:
             with open(path, 'rb') as f:
                 tiles = pickle.load(f)
@@ -103,8 +102,8 @@ def image_boxes(img, res):
     for y in range(0, img.shape[0], shift[1]):
         for x in range(0, img.shape[1], shift[0]):
             boxes.append({
-                'img': img[y:y+res[0], x:x+res[1]],
-                'pos': (x,y)
+                'img': img[y:y + res[0], x:x + res[1]],
+                'pos': (x, y)
             })
 
     return boxes
@@ -113,7 +112,7 @@ def image_boxes(img, res):
 def color_distance(c1, c2):
     c1_int = [int(x) for x in c1]
     c2_int = [int(x) for x in c2]
-    return math.sqrt((c1_int[0] - c2_int[0])**2 + (c1_int[1] - c2_int[1])**2 + (c1_int[2] - c2_int[2])**2)
+    return math.sqrt((c1_int[0] - c2_int[0]) ** 2 + (c1_int[1] - c2_int[1]) ** 2 + (c1_int[2] - c2_int[2]) ** 2)
 
 
 def most_similar_tile(box_mode_freq, tiles):
@@ -131,12 +130,11 @@ def most_similar_tile(box_mode_freq, tiles):
 
 
 def get_processed_image_boxes(image_path, tiles):
-    print('Gettting and processing boxes')
     img = read_image(image_path)
     pool = Pool(POOL_SIZE)
     all_boxes = []
 
-    for res, ts in tqdm(sorted(tiles.items(), reverse=True)):
+    for res, ts in tqdm(sorted(tiles.items(), reverse=True), desc="Gettting and processing boxes"):
         boxes = image_boxes(img, res)
         modes = pool.map(mode_color, [x['img'] for x in boxes])
         most_similar_tiles = pool.starmap(most_similar_tile, zip(modes, [ts for x in range(len(modes))]))
@@ -148,7 +146,7 @@ def get_processed_image_boxes(image_path, tiles):
 
         all_boxes += boxes
 
-    return all_boxes, img.shape 
+    return all_boxes, img.shape
 
 
 def place_tile(img, box):
@@ -162,13 +160,12 @@ def place_tile(img, box):
 
 
 def create_tiled_image(boxes, res, render=False):
-    print('Creating tiled image')
     img = np.zeros(shape=(res[0], res[1], 4), dtype=np.uint8)
-    
-    for box in tqdm(sorted(boxes, key=lambda x: x['min_dist'], reverse=OVERLAP_TILES)):
+
+    for box in tqdm(sorted(boxes, key=lambda x: x['min_dist'], reverse=OVERLAP_TILES), desc="Creating tiled image"):
         place_tile(img, box)
         if render:
-            show_image(img, wait=False)
+            show_image(img, wait=True)
             sleep(0.025)
 
     return img
@@ -179,16 +176,18 @@ def main():
         image_path = sys.argv[1]
     else:
         image_path = conf.IMAGE_TO_TILE
-    
+
     if len(sys.argv) > 2:
-    	tiles_paths = []
-    	path = sys.argv[2]
-    	tiles_paths.append(path)
+        tiles_paths = []
+        path = sys.argv[2]
+        tiles_paths.append(path)
     else:
         tiles_paths = conf.TILES_FOLDER.split(' ')
+    print(tiles_paths)
     if len(sys.argv) > 3:
         Output_file = sys.argv[3]
-        print(Output_file)
+    else:
+        Output_file = conf.OUTPUT_FILE
     if not os.path.exists(image_path):
         print('Image not found')
         exit(-1)
