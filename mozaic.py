@@ -165,7 +165,7 @@ def create_tiled_image(boxes, res, render=False):
     for box in tqdm(sorted(boxes, key=lambda x: x['min_dist'], reverse=OVERLAP_TILES), desc="Creating tiled image"):
         place_tile(img, box)
         if render:
-            show_image(img, wait=True)
+            show_image(img, wait=False)
             sleep(0.025)
 
     return img
